@@ -10,3 +10,6 @@ dist/
 
 # data
 data/ 
+
+# result
+result.csv
