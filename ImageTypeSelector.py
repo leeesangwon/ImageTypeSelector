@@ -44,12 +44,16 @@ class XMainWindow(QMainWindow, selectorUI.Ui_MainWindow):
         try:
             self.input_data.nextData()
         except IndexError:
-            QMessageBox.information(self, 'Last Image', "This is the last image of the current dataset.\nSwitch to the next dataset.", QMessageBox.Ok, QMessageBox.Ok)
-            if self.input_data.current_folder_index + 1 == 15:
-                QMessageBox.information(self, 'Last Dataset', "This is the last dataset.\nClose program.", QMessageBox.Ok, QMessageBox.Ok)
+            reply = QMessageBox.question(self, 'Last Image', "This is the last image of the current dataset.\nDo you want to export the result file and switch to the next dataset?\nAfter Switching, you cannot change selections of current Dataset.", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
                 self.saveResult()
-                QtCore.QCoreApplication.instance().quit()
-            self.loadDataset(self.input_data.current_folder_index + 1)
+                if self.input_data.current_folder_index + 1 == 15:
+                    QMessageBox.information(self, 'Last Dataset', "This is the last dataset.\nClose program.", QMessageBox.Ok, QMessageBox.Ok)
+                    self.close()
+                    return
+                self.loadDataset(self.input_data.current_folder_index + 1)
+            else:
+                self.input_data.prevData()
         else:
             self.updateImage()
 
@@ -59,12 +63,8 @@ class XMainWindow(QMainWindow, selectorUI.Ui_MainWindow):
         try:
             self.input_data.prevData()
         except IndexError:
-            QMessageBox.information(self, 'First Image', "This is the first image of the current dataset.\nSwitch to the prev dataset.", QMessageBox.Ok, QMessageBox.Ok)
-            if self.input_data.current_folder_index == 0:
-                QMessageBox.information(self, 'First Dataset', "This is the first dataset.\nDo nothing.", QMessageBox.Ok, QMessageBox.Ok)
-                self.input_data.nextData()
-                return
-            self.loadDataset(self.input_data.current_folder_index - 1)
+            QMessageBox.information(self, 'First Image', "This is the first image of the current dataset.\nDo nothing.", QMessageBox.Ok, QMessageBox.Ok)
+            self.input_data.nextData()
         else:
             self.updateImage()
 
@@ -117,7 +117,7 @@ class InputDataHandler():
         self.current_data_index_list = [0 for _ in range(self.num_folders)]
         self.number_of_data_list = []
         for i in range(self.num_folders):
-            data_path = os.path.join(self.origin_path, "{0:02}".format(self.current_folder_index), "*.jpg")
+            data_path = os.path.join(self.origin_path, "{0:02}".format(i), "*.jpg")
             self.number_of_data_list.append(len(glob.glob(data_path)))
     
     def restoreFromPreviousWorks(self, current_data_index_list):
