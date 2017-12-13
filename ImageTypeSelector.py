@@ -15,6 +15,7 @@ class XMainWindow(QMainWindow, selectorUI.Ui_MainWindow):
         self.setupUi(self)
 
         self.nextButton.clicked.connect(self.nextImage)
+        self.prevButton.clicked.connect(self.prevImage)
         self.benignButton.clicked.connect(self.radioButtonClicked)
         self.cancerButton.clicked.connect(self.radioButtonClicked)
         
@@ -44,13 +45,43 @@ class XMainWindow(QMainWindow, selectorUI.Ui_MainWindow):
             self.input_data.nextData()
         except IndexError:
             QMessageBox.information(self, 'Last Image', "This is the last image of the current dataset.\nSwitch to the next dataset.", QMessageBox.Ok, QMessageBox.Ok)
+            if self.input_data.current_folder_index + 1 == 15:
+                QMessageBox.information(self, 'Last Dataset', "This is the last dataset.\nClose program.", QMessageBox.Ok, QMessageBox.Ok)
+                self.saveResult()
+                QtCore.QCoreApplication.instance().quit()
             self.loadDataset(self.input_data.current_folder_index + 1)
+        else:
+            self.updateImage()
+
+    def prevImage(self):
+        assert self.current_selection in ["benign", "cancer"], "Invalid selection: %s" % (self.current_selection)
+        self.selection_results.saveSelection(self.input_data.current_folder_index, self.input_data.currentDataIndex(), self.current_selection)
+        try:
+            self.input_data.prevData()
+        except IndexError:
+            QMessageBox.information(self, 'First Image', "This is the first image of the current dataset.\nSwitch to the prev dataset.", QMessageBox.Ok, QMessageBox.Ok)
+            if self.input_data.current_folder_index == 0:
+                QMessageBox.information(self, 'First Dataset', "This is the first dataset.\nDo nothing.", QMessageBox.Ok, QMessageBox.Ok)
+                self.input_data.nextData()
+                return
+            self.loadDataset(self.input_data.current_folder_index - 1)
         else:
             self.updateImage()
 
     def updateImage(self):
         self.showImage()
         self.currentImageIndex.setText(str(self.input_data.currentDataIndex()+1))
+        try:
+            selection = self.selection_results.getSelection(self.input_data.current_folder_index, self.input_data.currentDataIndex())
+        except KeyError:
+            self.benignButton.setChecked(True)
+            self.current_selection = "benign"
+        else:
+            if selection == "benign":
+                self.benignButton.setChecked(True)
+            elif selection == "cancer":
+                self.cancerButton.setChecked(True)
+            self.radioButtonClicked()
 
     def showImage(self):
         path = self.input_data.currentDataName()
@@ -116,12 +147,19 @@ class InputDataHandler():
         assert os.path.isdir(data_folder_path), "No accessible folder: %s" % data_folder_path
         self.current_folder_index = idx
         if self.current_data_index_list[self.current_folder_index] >= self.numberOfCurrentData():
-            raise IndexError("Last Image")
+            self.current_data_index_list[self.current_folder_index] -= 1
+        elif self.current_data_index_list[self.current_folder_index] < 0:
+            self.current_data_index_list[self.current_folder_index] += 1
 
     def nextData(self):
         self.current_data_index_list[self.current_folder_index] += 1
         if self.current_data_index_list[self.current_folder_index] >= self.numberOfCurrentData():
             raise IndexError("Last Image")
+
+    def prevData(self):
+        self.current_data_index_list[self.current_folder_index] -= 1
+        if self.current_data_index_list[self.current_folder_index] < 0:
+            raise IndexError("First Image")
     
 
 class SelectionResultsHandler():
@@ -148,7 +186,6 @@ class SelectionResultsHandler():
             if i in folder_to_file_dict.keys():
                 self.current_data_index_list[i] = folder_to_file_dict[i] + 1
         
-
     def saveSelection(self, folder_idx, data_idx, selection):
         assert isinstance(folder_idx, int), "Invalid type of folder_idx: %s" % (type(folder_idx))
         assert isinstance(data_idx, int), "Invalid type of data_idx: %s" % (type(data_idx))
@@ -158,10 +195,14 @@ class SelectionResultsHandler():
         assert selection in ["benign", "cancer"], "Invalid selction: %s" % selection
         self.selection_dict[(folder_idx, data_idx)] = selection
 
+    def getSelection(self, folder_idx, data_idx):
+        assert isinstance(folder_idx, int), "Invalid type of folder_idx: %s" % (type(folder_idx))
+        assert isinstance(data_idx, int), "Invalid type of data_idx: %s" % (type(data_idx))
+        assert folder_idx >= 0 and folder_idx < self.num_folderes, 'Out of bounds'
+        assert data_idx >= 0 and data_idx < self.number_of_data_list[folder_idx], 'Out of bounds'
+        return self.selection_dict[(folder_idx, data_idx)]
+
     def export(self):
-        cur_time = time.localtime()
-        timestr = "%04d%02d%02d_%02d%02d%02d" % (
-            cur_time.tm_year, cur_time.tm_mon, cur_time.tm_mday, cur_time.tm_hour, cur_time.tm_min, cur_time.tm_sec)
         backup_list = []
         result_file_list = [[] for _ in range(self.num_folderes)]
         for key, value in self.selection_dict.items():
