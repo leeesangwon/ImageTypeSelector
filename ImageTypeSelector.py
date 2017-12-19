@@ -18,6 +18,7 @@ class XMainWindow(QMainWindow, selectorUI.Ui_MainWindow):
         self.prevButton.clicked.connect(self.prevImage)
         self.benignButton.clicked.connect(self.radioButtonClicked)
         self.cancerButton.clicked.connect(self.radioButtonClicked)
+        self.ambiguousCheckBox.stateChanged.connect(self.changeAmbiguity)
         
         self.out_path = 'results'
         if not os.path.isdir(self.out_path):
@@ -26,7 +27,6 @@ class XMainWindow(QMainWindow, selectorUI.Ui_MainWindow):
         self.input_data = InputDataHandler(self.in_path)
         self.selection_results = SelectionResultsHandler(self.input_data, self.out_path)
         self.restore()
-        self.current_selection = "benign"
         self.updateImage()
 
     def restore(self):
@@ -39,8 +39,8 @@ class XMainWindow(QMainWindow, selectorUI.Ui_MainWindow):
         self.saveResult()
 
     def nextImage(self):
-        assert self.current_selection in ["benign", "cancer"], "Invalid selection: %s" % (self.current_selection)
-        self.selection_results.saveSelection(self.input_data.current_folder_index, self.input_data.currentDataIndex(), self.current_selection)
+        assert self.selection_results.current_selection in ["benign", "cancer"], "Invalid selection: %s" % (self.selection_results.current_selection)
+        self.selection_results.saveSelection(self.input_data.current_folder_index, self.input_data.currentDataIndex())
         try:
             self.input_data.nextData()
         except IndexError:
@@ -58,8 +58,8 @@ class XMainWindow(QMainWindow, selectorUI.Ui_MainWindow):
             self.updateImage()
 
     def prevImage(self):
-        assert self.current_selection in ["benign", "cancer"], "Invalid selection: %s" % (self.current_selection)
-        self.selection_results.saveSelection(self.input_data.current_folder_index, self.input_data.currentDataIndex(), self.current_selection)
+        assert self.selection_results.current_selection in ["benign", "cancer"], "Invalid selection: %s" % (self.selection_results.current_selection)
+        self.selection_results.saveSelection(self.input_data.current_folder_index, self.input_data.currentDataIndex())
         try:
             self.input_data.prevData()
         except IndexError:
@@ -72,16 +72,23 @@ class XMainWindow(QMainWindow, selectorUI.Ui_MainWindow):
         self.showImage()
         self.currentImageIndex.setText(str(self.input_data.currentDataIndex()+1))
         try:
-            selection = self.selection_results.getSelection(self.input_data.current_folder_index, self.input_data.currentDataIndex())
+            selection, ambiguity = self.selection_results.getSelection(self.input_data.current_folder_index, self.input_data.currentDataIndex())
         except KeyError:
             self.benignButton.setChecked(True)
-            self.current_selection = "benign"
+            self.selection_results.current_selection = "benign"
+            self.ambiguousCheckBox.setChecked(False)
+            self.selection_results.current_ambiguity = False
         else:
             if selection == "benign":
                 self.benignButton.setChecked(True)
             elif selection == "cancer":
                 self.cancerButton.setChecked(True)
             self.radioButtonClicked()
+            if ambiguity:
+                self.ambiguousCheckBox.setChecked(True)
+            else:
+                self.ambiguousCheckBox.setChecked(False)
+            self.changeAmbiguity()
 
     def showImage(self):
         path = self.input_data.currentDataName()
@@ -94,9 +101,9 @@ class XMainWindow(QMainWindow, selectorUI.Ui_MainWindow):
 
     def radioButtonClicked(self):
         if self.cancerButton.isChecked():
-            self.current_selection = "cancer"
+            self.selection_results.current_selection = "cancer"
         else: # self.benignButton.isChecked():
-            self.current_selection = "benign"
+            self.selection_results.current_selection = "benign"
 
     def loadDataset(self, num):
         try:
@@ -107,6 +114,12 @@ class XMainWindow(QMainWindow, selectorUI.Ui_MainWindow):
             self.curDataset.setText(str(self.input_data.current_folder_index))
             self.numOfWholeImages.setText(str(self.input_data.numberOfCurrentData()))
             self.updateImage()
+
+    def changeAmbiguity(self):
+        if self.ambiguousCheckBox.isChecked():
+            self.selection_results.current_ambiguity = True
+        else:
+            self.selection_results.current_ambiguity = False
     
 
 class InputDataHandler():
@@ -168,11 +181,14 @@ class SelectionResultsHandler():
         self.backup_path = "backup.imagetypeselector"
         self.result_file_pattern = os.path.join(out_folder, "result_%d%s.csv")
         self.num_folderes = 15
-        self.table_schema = ["folder", "file", "selection"]
+        self.table_schema = ["folder", "file", "selection", "isAmbiguous"]
         assert len(inputDataHandler.number_of_data_list) == self.num_folderes, "The number of the output folder should be same with the number of the input folder"
         self.number_of_data_list = inputDataHandler.number_of_data_list
         self.current_data_index_list = inputDataHandler.current_data_index_list
         self.selection_dict = {}
+        self.ambiguity_dict = {}
+        self.current_selection = "benign"
+        self.current_ambiguity = False
     
     def restoreFromPreviousWorks(self):
         assert os.path.isfile(self.backup_path), "No accessible file: %s" % self.backup_path
@@ -182,34 +198,38 @@ class SelectionResultsHandler():
         for _, row in backup_df.iterrows():
             folder_to_file_dict[row['folder']] = row['file']
             self.selection_dict[(row['folder'], row['file'])] = row['selection']
+            self.ambiguity_dict[(row['folder'], row['file'])] = row['isAmbiguous']
         for i in range(self.num_folderes):
             if i in folder_to_file_dict.keys():
                 self.current_data_index_list[i] = folder_to_file_dict[i] + 1
         
-    def saveSelection(self, folder_idx, data_idx, selection):
+    def saveSelection(self, folder_idx, data_idx):
         assert isinstance(folder_idx, int), "Invalid type of folder_idx: %s" % (type(folder_idx))
         assert isinstance(data_idx, int), "Invalid type of data_idx: %s" % (type(data_idx))
-        assert isinstance(selection, str), "Invalid type of selection: %s" % (type(selection))
+        assert isinstance(self.current_selection, str), "Invalid type of selection: %s" % (type(self.current_selection))
+        assert isinstance(self.current_ambiguity, bool), "Invalid type of ambiguity: %s" % (type(self.current_ambiguity))
+        
         assert folder_idx >= 0 and folder_idx < self.num_folderes, 'Out of bounds'
         assert data_idx >= 0 and data_idx < self.number_of_data_list[folder_idx], 'Out of bounds'
-        assert selection in ["benign", "cancer"], "Invalid selction: %s" % selection
-        self.selection_dict[(folder_idx, data_idx)] = selection
+        assert self.current_selection in ["benign", "cancer"], "Invalid selction: %s" % self.current_selection
+
+        self.selection_dict[(folder_idx, data_idx)] = self.current_selection
+        self.ambiguity_dict[(folder_idx, data_idx)] = self.current_ambiguity
 
     def getSelection(self, folder_idx, data_idx):
         assert isinstance(folder_idx, int), "Invalid type of folder_idx: %s" % (type(folder_idx))
         assert isinstance(data_idx, int), "Invalid type of data_idx: %s" % (type(data_idx))
         assert folder_idx >= 0 and folder_idx < self.num_folderes, 'Out of bounds'
         assert data_idx >= 0 and data_idx < self.number_of_data_list[folder_idx], 'Out of bounds'
-        return self.selection_dict[(folder_idx, data_idx)]
+        return (self.selection_dict[(folder_idx, data_idx)], self.ambiguity_dict[(folder_idx, data_idx)])
 
     def export(self):
         backup_list = []
         result_file_list = [[] for _ in range(self.num_folderes)]
-        for key, value in self.selection_dict.items():
+        for (key, selection), ambiguity in zip(self.selection_dict.items(), self.ambiguity_dict.values()):
             folder = key[0]
             filename = key[1]
-            selection = value
-            row = (folder, filename, selection)
+            row = (folder, filename, selection, ambiguity)
             backup_list.append(row)
             result_file_list[folder].append(row[1:])
         backup_df = pd.DataFrame(backup_list, columns=self.table_schema)
