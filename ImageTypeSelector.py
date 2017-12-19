@@ -27,6 +27,8 @@ class XMainWindow(QMainWindow, selectorUI.Ui_MainWindow):
         self.input_data = InputDataHandler(self.in_path)
         self.selection_results = SelectionResultsHandler(self.input_data, self.out_path)
         self.restore()
+        self.curDataset.setText(str(self.input_data.current_folder_index))
+        self.numOfWholeImages.setText(str(self.input_data.numberOfCurrentData()))
         self.updateImage()
 
     def restore(self):
