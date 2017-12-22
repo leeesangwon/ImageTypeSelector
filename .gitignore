@@ -9,7 +9,8 @@ build/
 dist/
 
 # data
-data/ 
+data/
+data_per_patient/ 
 *.jpg
 
 # result
